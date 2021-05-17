@@ -14263,13 +14263,13 @@ a.anchor-link {
 <p>In the AV1 video coding format, a new entropy coder was added. An entropy
 encoder is responsible for compressing the instructions that allow
 reconstructing the video frame.</p>
-<p>The advantage of the new entropy coder is that it uses a parallel method
+<p>The advantage of the new entropy coder is that it uses a parallel architecture
 capable of decoding more than two possibilities in one step. In comparison,
 previous coders used a serial process that decoded in a binary manner. This was
 a substantial bottleneck for hardware, which are able to utilize fine-grained
-parallelization to a much greater extent than cpus or gpus. It's also possible
+parallelization to a much greater extent than CPUs or GPUs. It's also possible
 to write <a href="https://www.sciencedirect.com/topics/computer-science/single-instruction-multiple-data">SIMD</a>
-for this process, so there is also some benefits for cpus
+for this process, so there is also some benefits for CPUs
 (<a href="https://code.videolan.org/videolan/dav1d/-/blob/master/src/x86/msac.asm#L264">example</a>).</p>
 <p>To take advantage of this parallelism, data must be encoded from an 'alphabet'
 of more than 2 'letters' or 'symbol'. The largest supported alphabet size is 16,
@@ -14280,12 +14280,13 @@ This is an approximate of the frequency that takes spatial locality into account
 (unlike the static behaviour of <a href="https://en.wikipedia.org/wiki/Huffman_coding">huffman coding</a>).
 Since this structure for storing distributions is related to the
 Cumulative Distribution Function, it will be referred to as a CDF.</p>
-<p>CDFs are generally updated whenever a symbol is encoded. Some CDFs are
-hardcoded in the code, and there is also functionality to turn off updates
-some period of time.</p>
-<p>Frames can be split into 'tiles' that have independent CDF 'contexts'. The
-tiles in the next frame get their contexts from previous contexts or,
-alternatively, resets to the initial CDFs specified by the standard.</p>
+<p>CDFs are generally updated whenever a symbol is encoded. It should be noted
+that some CDFs have static, hardcoded probabilities, and there is also
+functionality to turn off updates over some period of time.</p>
+<p>CDF's are not necessarily global over the entire program. Frames can be split
+into 'tiles' that have independent CDF 'contexts'. The tiles in the next frame
+obtain their contexts from the final state of previous contexts or,
+alternatively, reset to the initial CDFs specified in the standard.</p>
 <p>In practice, AV1 doesn't take advantage of larger alphabets as much as one
 would hope. In this tutorial, we will take a file containing a dump of a video's
 symbol data and analyze the performance of the entropy encoder. We won't be
@@ -14293,25 +14294,27 @@ considering any video data that disable updates to CDFs or any of the hardcoded
 CDFs.</p>
 <p>daala, the experimental codec that AV1's entropy coder is from, has a <a href="https://github.com/xiph/daala/blob/694d4ced7e97f349cd4f54dbfc8c8a69982a54e4/doc/design.tex">design doc (tex)</a>
 that contains more information and backgroud on the entropy coder.</p>
-<h2 id="Getting-the-Data">Getting the Data<a class="anchor-link" href="#Getting-the-Data">&#182;</a></h2><p>libaom v3.1.0 was used to encode a clip using the following options
+<h2 id="Getting-the-Data">Getting the Data<a class="anchor-link" href="#Getting-the-Data">&#182;</a></h2><p><a href="https://aomedia.googlesource.com/aom/+/refs/tags/v3.1.0">libaom v3.1.0</a>
+was used to encode a clip using the following options
 <code>aomenc -o &lt;output&gt;.ivf &lt;input&gt; --profile=0 --cpu-used=1 --threads=2 --tile-columns=2 --end-usage=q --cq-level=43</code>.
 See <code>aomenc --help</code> for what these options do.</p>
 <p>The clip used is a version of <code>Netflix_ToddlerFountain_4096x2160_60fps_10bit_420.y4m</code>
 (can be found <a href="https://media.xiph.org/video/derf/">here</a>) that has been
 converted to 8 bits and downsampled to 1080p using ffmpeg.</p>
 <p>The encoded video file can be found <a href="https://drive.google.com/file/d/1GZ2hx6okLo4Dkh0wKvUHBBK7_lDYDNoL/view?usp=sharing">here</a>.</p>
-<p>To dump symbol data, modifications were made to the decoder in libaom. A branch
-containing those changes can be found here (TODO: Link). Building the encoder
+<p>To dump symbol data, modifications were made to the decoder in libaom. The
+branch containing those changes can be found <a href="https://github.com/KyleSiefring/libaom/tree/symbol_dump_1">here</a>.
+Building the encoder
 is broken on this branch, so it is necessary to run <code>make aomdec</code> instead of
 just <code>make</code> to build successfully. The first 600 out of 1200 frames were
 decoded using <code>../aomdec &lt;input&gt;.ivf -o /dev/null --progress -t 1 --limit=600</code>.</p>
-<h3 id="Format">Format<a class="anchor-link" href="#Format">&#182;</a></h3><p>The file contains a list of events and data for each event.</p>
+<h3 id="Format">Format<a class="anchor-link" href="#Format">&#182;</a></h3><p>The dumped file contains a list of events and data for each event.</p>
 <p>Events:</p>
 <ul>
 <li>The initial cdf and some descriptors for the event. Descriptors include:<ul>
 <li>An id to uniquely identify the individual cdf.</li>
 <li>The function name of the CDF, or a custom name already provided by libaom.$^*$</li>
-<li>src file and line number that the symbol first encoded on.$^*$</li>
+<li>Source file and line number that the symbol first encoded on.$^*$</li>
 </ul>
 </li>
 <li>Decode a symbol with update.</li>
@@ -14320,13 +14323,13 @@ decoded using <code>../aomdec &lt;input&gt;.ivf -o /dev/null --progress -t 1 --l
 <li>Change the context symbols are currently being written to.</li>
 </ul>
 <p>Using these events, we can model the entropy coding process later on.</p>
+<p>$^*$ Unfortunately, it might be possible for these to be different for one id
+with two different files.</p>
 <h4 id="Loading-The-Data-In">Loading The Data In<a class="anchor-link" href="#Loading-The-Data-In">&#182;</a></h4><p>To load this file faster than would have been possible with regular Python,
 <a href="https://cython.org/">Cython</a> is used. Cython is a modified version of Python
 that compiles to C code. The ability to define types of variables and access
 C APIs helped significantly when dealing with the very granular loads in this
 code.</p>
-<p>$^*$ Unfortunately, it might be possible for these to be different for one id
-with two different files.</p>
 
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs  ">
@@ -14524,7 +14527,7 @@ with two different files.</p>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
      <div class="CodeMirror cm-s-jupyter">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get the following from load_symbol_file</span>
-<span class="c1">#   (some of these are also documented in the function)</span>
+<span class="c1">#   (some of these are also documented inside the function)</span>
 <span class="c1"># symbol_data</span>
 <span class="c1">#   Map of context to</span>
 <span class="c1">#       map of cdf_id to symbols</span>
@@ -14571,7 +14574,7 @@ with two different files.</p>
 </div>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h4 id="Assessing-the-Extent-of-the-Problem:-Part-1">Assessing the Extent of the Problem: Part 1<a class="anchor-link" href="#Assessing-the-Extent-of-the-Problem:-Part-1">&#182;</a></h4><p>Now, we can examine what size are CDFs using a bar chart. What would be more
+<h4 id="Assessing-the-Extent-of-the-Problem:-Part-1">Assessing the Extent of the Problem: Part 1<a class="anchor-link" href="#Assessing-the-Extent-of-the-Problem:-Part-1">&#182;</a></h4><p>Now, we can examine what size the CDFs are using a bar chart. What would be more
 useful is to know is how many are symbols are encoded for each alphabet size.
 This will be done later on.</p>
 
@@ -14630,7 +14633,7 @@ This will be done later on.</p>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
 <h2 id="Processing-the-Data">Processing the Data<a class="anchor-link" href="#Processing-the-Data">&#182;</a></h2><p>We want to run a loop to process and examine the symbol data that we have read.
-There are a few helper methods and classes that are useful for doing this.
+There are a few helper methods and classes that will be useful for doing this.
 Once again, we are going to use Cython to speed up some of this.</p>
 <p>We have two important functions here:</p>
 <ul>
@@ -14768,16 +14771,16 @@ cdf.</li>
 <li>$\frac{Bits}{\# Symbol}$ (Bits per Symbol): Simply the average number of bits
 required for each symbol.</li>
 <li>Symbol Counts: Counts how many of each symbol has been used for a CDF.</li>
-<li>$\frac{Bits}{\#\ Symbols * \log_2(Alphabet\ Length)}$: This ends being
+<li>$\frac{Bits}{\#\ Symbols * \log_2(Alphabet\ Length)}$: This ends up being
 useful. Without using an entropy coder, a symbol from an Alphabet of length $L$
-can always be encoded in $\log_2(L)$. This means that a value of the variable
+can always be encoded in $\log_2(L)$ bits. This means that a value of the variable
 nearing 1 (or worse, above!) indicates a symbol that isn't benefiting much from
 the entropy coder.</li>
 </ul>
 <p>Plenty of other statistics might be useful; for example: it could be
 useful to compare
 <a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.entropy.html">entropy</a>
-to the bits used to assess whether a symbol is benifiting from locality.</p>
+to the bits used to assess whether a symbol is benefiting from locality.</p>
 
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell   ">
@@ -15100,9 +15103,9 @@ to the bits used to assess whether a symbol is benifiting from locality.</p>
 </div>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h2 id="Analysis">Analysis<a class="anchor-link" href="#Analysis">&#182;</a></h2><h4 id="Assessing-the-Extent-of-the-Problem:-Part-2">Assessing the Extent of the Problem: Part 2<a class="anchor-link" href="#Assessing-the-Extent-of-the-Problem:-Part-2">&#182;</a></h4><p>As promised earlier, we can start by creating a new plot of alphabet lengths.
+<h2 id="Analysis">Analysis<a class="anchor-link" href="#Analysis">&#182;</a></h2><h4 id="Assessing-the-Extent-of-the-Problem:-Part-2">Assessing the Extent of the Problem: Part 2<a class="anchor-link" href="#Assessing-the-Extent-of-the-Problem:-Part-2">&#182;</a></h4><p>As promised earlier, we will create a new plot of alphabet lengths.
 This one is weighted by the number of symbols encoded to get a more realistic
-picture of the decoder overhead incurred by smaller symbols.</p>
+picture of the overhead incurred by smaller symbols.</p>
 
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell   ">
@@ -15159,7 +15162,7 @@ picture of the decoder overhead incurred by smaller symbols.</p>
 </div>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<p>This is even worse than before; the smaller symbols take up an even bigger
+<p>This is even worse than before $-$ the smaller symbols take up an even bigger
 portion of symbols compared to unique cdfs.</p>
 
 </div>
@@ -15168,7 +15171,7 @@ portion of symbols compared to unique cdfs.</p>
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
 <h3 id="Aggregated-Statistics">Aggregated Statistics<a class="anchor-link" href="#Aggregated-Statistics">&#182;</a></h3><p>In some cases, there seem to be multiple different CDFs for the same line of
 the decoder source. Since there are over 1000 different CDFs, we should combine
-these for now.</p>
+these for the initial analysis.</p>
 
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell   ">
@@ -15543,9 +15546,10 @@ $\frac{Bits}{\#\ Symbols * \log_2(Alphabet\ Length)}$.</p>
 </div>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<p>Our first two values are from the same function, read_mv_component.</p>
-<p>Let's look at the libaom source code to see what is being decoded on line 845
-and 858. (TODO: Link)</p>
+<p>Our first two values are from the same function, <code>read_mv_component</code>. Let's
+look at the libaom source code to see what is being decoded on line 845
+and 858.</p>
+<p><a href="https://github.com/KyleSiefring/libaom/blob/5080acdbe8c621deecc9874d3fc99337f05a679b/av1/decoder/decodemv.c#L842-L898">Source Link</a></p>
 <div class="highlight"><pre><span></span><span class="mi">842</span><span class="o">|</span><span class="k">static</span> <span class="kt">int</span> <span class="n">read_mv_component</span><span class="p">(</span><span class="n">aom_reader</span> <span class="o">*</span><span class="n">r</span><span class="p">,</span> <span class="n">nmv_component</span> <span class="o">*</span><span class="n">mvcomp</span><span class="p">,</span>
 <span class="mi">843</span><span class="o">|</span>                             <span class="kt">int</span> <span class="n">use_subpel</span><span class="p">,</span> <span class="kt">int</span> <span class="n">usehp</span><span class="p">)</span> <span class="p">{</span>
 <span class="mi">844</span><span class="o">|</span>  <span class="kt">int</span> <span class="n">mag</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">fr</span><span class="p">,</span> <span class="n">hp</span><span class="p">;</span>
@@ -15605,18 +15609,19 @@ and 858. (TODO: Link)</p>
 <span class="mi">898</span><span class="o">|</span><span class="p">}</span>
 </pre></div>
 <p>Line 845 encodes the sign of a <a href="https://en.wikipedia.org/wiki/Motion_vector">motion vector</a> and line 858 encodes
-individual bits. The CDFs seem to be split between of the horizontal and vertical
-directions. It makes sense that both of these are close to random given that
-the highest set bit is based on <code>mv_class</code>.</p>
+individual bits. The CDFs also seem to be split between of the horizontal and
+vertical components. It makes sense that both of these are close to random
+given that the highest set bit is based on <code>mv_class</code>.</p>
 
 </div>
 </div>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h3 id="Motion-Vector-Bit-Coding">Motion Vector Bit Coding<a class="anchor-link" href="#Motion-Vector-Bit-Coding">&#182;</a></h3><p>Let's focus on the bit CDFs. It would be interesting to know if there are cases
+<h3 id="Motion-Vector-Bit-Coding">Motion Vector Bit Coding<a class="anchor-link" href="#Motion-Vector-Bit-Coding">&#182;</a></h3><p>Let's focus on the motion vector bit CDFs. It would be interesting to know if
+there are cases
 where the entropy coder does a very good job of modeling the behaviour.
-Let's look at the individualized statistics for each of our motion vector bit
-CDFs.</p>
+Let's start by looking at the individual statistics for each of our
+motion vector bit CDFs.</p>
 
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell   ">
@@ -15625,7 +15630,7 @@ CDFs.</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In&nbsp;[11]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
      <div class="CodeMirror cm-s-jupyter">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Select</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Select all the mv bit cdfs</span>
 <span class="n">mv_bits_line</span> <span class="o">=</span> <span class="mi">858</span>
 <span class="n">mv_bits_stats</span> <span class="o">=</span> <span class="n">df_stats</span><span class="p">[</span>
     <span class="n">df_stats</span><span class="o">.</span><span class="n">descriptor</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s1">&#39;read_mv&#39;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df_stats</span><span class="o">.</span><span class="n">line</span> <span class="o">==</span> <span class="n">mv_bits_line</span><span class="p">)</span>
@@ -15819,7 +15824,9 @@ CDFs.</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In&nbsp;[12]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
      <div class="CodeMirror cm-s-jupyter">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">sns</span><span class="o">.</span><span class="n">swarmplot</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">mv_bits_stats</span><span class="o">.</span><span class="n">bits_per_symb_over_lg_alp_len</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Plot out the metric for each of the stats in a swarm plot.</span>
+<span class="c1">#   This will allow use to better see multiple CDF coalesced in proximity.</span>
+<span class="n">sns</span><span class="o">.</span><span class="n">swarmplot</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">mv_bits_stats</span><span class="o">.</span><span class="n">bits_per_symb_over_lg_alp_len</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Cost of Different Motion Vector Bits CDFs&#39;</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;(Bits / Symbol) / (Alphabet Length)&#39;</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
@@ -15861,31 +15868,33 @@ CDFs.</p>
 <p>There does indeed seem to be some variation among the CDFs. This doesn't mean
 that the CDFs with higher costs are bad. It's possible that all the CDFs would
 perform well with a different test clip, or they perform well over segments of
-the data. Both of these are analysis that would be valuable, but for now we
-should try to get a better statistical verification that these CDFs aren't
+the video. Both of these are analysis that would be valuable, but for now we
+should try to get a good statistical verification that these CDFs aren't
 modeling a random 50/50 split.</p>
-<h4 id="Hypothesis-Testing">Hypothesis Testing<a class="anchor-link" href="#Hypothesis-Testing">&#182;</a></h4><p>The previous table indicates that there probably enough symbols for hypothesis
-testing for our CDFs.</p>
-<p>The most basic test would be a <a href="https://en.wikipedia.org/wiki/Binomial_distribution#Normal_approximation">one-proportion test</a>.
+<h4 id="Hypothesis-Testing">Hypothesis Testing<a class="anchor-link" href="#Hypothesis-Testing">&#182;</a></h4><p>The previous table indicates that there probably enough symbols on each
+individual CDF to perform some form of hypothesis testing. The most basic test
+would be a <a href="https://en.wikipedia.org/wiki/Binomial_distribution#Normal_approximation">one-proportion test</a>.
 With this test, we can test a hypothesis of the true proportion not being equal
 to some value.
 In our case, we want to test against a value of 0.5. When the null hypothesis
 (p = 0.5) is rejected, then there is justification to believe the symbol data
 isn't split between two values.</p>
 <p>Unfortunately, our analysis will be a little tainted due to the samples not
-being completely independent (required for the test) of each other. The concern
+being completely independent (which is required for the test) of each other.
+The concern
 is that previous encoder decisions will impact future ones. The good news is
-that there is reason to believe that the motion vectors reasonably independent.
-Since motion vectors point to a block of pixels for the decoder to reference,
-it would be expensive for a vector to be too heavily based on previous vectors$^*$.</p>
+that there is reason to believe that the motion vectors reasonably independent;
+since motion vectors point to a block of pixels for the decoder to reference,
+it would be expensive for the encoder to choose a vector based heavily on
+previous vectors and not the source material$^*$.</p>
 <p>Everything being said, it should be okay, but we should be cautious. In this
 situation, it makes sense to dump a confidence interval of the proportion using
-a binomial model (the same used for the test). This will further prevent us from
-going astray.</p>
+a binomial model (the same used for the test). This will help prevent us from
+going astray by contextualizing the hypothesis test.</p>
 <p>$^*$ I want to note that decoded motion vectors are generally offset by
-previous motion vectors. This will make the vectors more dependant. The
+previous motion vectors. This will make the vectors more dependant, but the
 point is that we will <em>probably</em> have a representative sample of vectors for
-an ideal set of decisions.</p>
+an ideal set of encoder decisions.</p>
 
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell   ">
@@ -16105,11 +16114,12 @@ an ideal set of decisions.</p>
 </div>
 <div class="jp-Cell-inputWrapper"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<p>All$^*$ of our p-values came back as very low. It does seem likely that we don't
-have a 50/50 split in the population data.</p>
+<p>All$^*$ of our p-values came back as very low. Assuming whatever amount of
+dependence in our data hasn't completely broken analysis, we can safely reject
+the null hypothesis that the 0 and 1 bits are split evenly split for our CDFs.</p>
 <p>The plot of confidence intervals tells an even more interesting story $-$ it
-seems that all of our values tend toward 0 to some degree or another. This
-further backs the rejections of the null hypothesis.</p>
+seems that 0 bits are more common across all CDFs. This provides a bit more
+support for our rejecting of the null hypothesises.</p>
 <p>$^*$ Since we are testing hypothesis for each CDF, we have to be somewhat weary
 of <a href="https://fivethirtyeight.com/features/science-isnt-broken">p hacking</a>.</p>
 
